@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat Room</title>
+    <title>Chat Room - ChatHadi</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -12,12 +12,107 @@
         <div id="input-container">
             <input type="text" id="messageInput" placeholder="Type your message..." />
             <button id="sendButton">Send</button>
+            <input type="file" id="imageInput" accept="image/*" style="display: none;" />
             <button id="imageButton">📷</button>
             <button id="recordButton">🎤</button>
             <button id="sendRecordingButton" style="display: none;">Send Recording</button>
         </div>
     </div>
+
     <script src="/socket.io/socket.io.js"></script>
-    <script src="app.js"></script>
+    <script>
+        const socket = io();
+        const messageInput = document.getElementById('messageInput');
+        const messagesDiv = document.getElementById('messages');
+        const sendButton = document.getElementById('sendButton');
+        const imageButton = document.getElementById('imageButton');
+        const imageInput = document.getElementById('imageInput');
+        const recordButton = document.getElementById('recordButton');
+        const sendRecordingButton = document.getElementById('sendRecordingButton');
+        let mediaRecorder;
+        let audioChunks = [];
+
+        // Load existing messages
+        socket.on('loadMessages', (loadedMessages) => {
+            messagesDiv.innerHTML = '';
+            loadedMessages.forEach(msg => {
+                displayMessage(msg);
+            });
+        });
+
+        // Send a text message
+        sendButton.addEventListener('click', () => {
+            const message = messageInput.value;
+            if (message) {
+                const msg = { type: 'text', content: message };
+                socket.emit('chatMessage', msg);
+                displayMessage(msg);
+                messageInput.value = '';
+            }
+        });
+
+        // Display messages
+        socket.on('chatMessage', (msg) => {
+            displayMessage(msg);
+        });
+
+        function displayMessage(msg) {
+            const div = document.createElement('div');
+            if (msg.type === 'text') {
+                div.innerHTML = `<div class="bubble">${msg.content}</div>`;
+            } else if (msg.type === 'image') {
+                div.innerHTML = `<div class="bubble"><img src="${msg.content}" class="chat-image" /></div>`;
+            } else if (msg.type === 'audio') {
+                const audioElement = document.createElement('audio');
+                audioElement.controls = true;
+                audioElement.src = msg.content;
+                div.appendChild(audioElement);
+            }
+            messagesDiv.appendChild(div);
+        }
+
+        // Handle image selection
+        imageButton.addEventListener('click', () => {
+            imageInput.click();
+        });
+
+        imageInput.addEventListener('change', () => {
+            const file = imageInput.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const msg = { type: 'image', content: reader.result };
+                    socket.emit('chatMessage', msg);
+                    displayMessage(msg);
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // Handle voice recording
+        recordButton.addEventListener('click', async () => {
+            if (!mediaRecorder) {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+                mediaRecorder.onstop = () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    const msg = { type: 'audio', content: audioUrl };
+                    socket.emit('chatMessage', msg);
+                    displayMessage(msg);
+                    audioChunks = [];
+                };
+                mediaRecorder.start();
+                recordButton.textContent = 'Stop Recording';
+            } else {
+                mediaRecorder.stop();
+                recordButton.textContent = '🎤';
+                mediaRecorder = null;
+            }
+        });
+    </script>
 </body>
 </html>
